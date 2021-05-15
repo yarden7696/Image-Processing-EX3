@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from numpy.linalg import inv
 from numpy import linalg as LA
 
-
+# לשנות עוד את הפונקציה ולכתוב הערות
 def opticalFlow(im1: np.ndarray, im2: np.ndarray, step_size=10, win_size=5) -> (np.ndarray, np.ndarray):
     """
     Given two images, returns the Translation from im1 to im2
@@ -17,40 +17,38 @@ def opticalFlow(im1: np.ndarray, im2: np.ndarray, step_size=10, win_size=5) -> (
     :param win_size: The optical flow window size (odd number)
     :return: Original points [[x,y]...], [[dU,dV]...] for each points
     """
+    orgPoints = []
+    u_v = []
+
+    Iy = cv2.Sobel(im1, -1, 0, 1)  # The derivative of I2 in the y-axis
+    Ix = cv2.Sobel(im1, -1, 1, 0)  # The derivative of I2 in the x-axis
+    It = im1 - im2  # The derivative of I by t
+
+    for i in range(step_size, im1.shape[0], step_size):
+        for j in range(step_size, im1.shape[1], step_size):
+            try:
+                winIx = Ix[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
+                winIy = Iy[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
+                winIt = It[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
+
+                if winIx.size < (win_size * win_size):
+                    break
+                Amat = np.concatenate(
+                    (winIx.reshape(((win_size * win_size), 1)), winIy.reshape(((win_size * win_size), 1))), axis=1)
+                bMat = (winIt.reshape(((win_size * win_size), 1)))
+                eig, _ = LA.eig(np.dot(Amat.T, Amat))
+                eig = np.sort(eig)
+                if eig[1] >= eig[0] > 1 and (eig[1] / eig[0]) < 100:
+                    d = np.dot(np.dot(inv(np.dot(Amat.T, Amat)), Amat.T), bMat)
+                    orgPoints.append(np.array([j, i]))
+                    u_v.append(d)
+
+            except IndexError as e:
+                pass
+    return np.array(orgPoints), np.array(u_v)
 
 
-    # kernel_x = np.array([[-1, 0, 1]])
-    # kernel_y = kernel_x.T
-    # Ix = cv2.filter2D(im2, -1, kernel_x)  # The derivative of I2 in the x-axis
-    # Iy = cv2.filter2D(im2, -1, kernel_y)  # # The derivative of I2 in the y-axis
-    # It = im2 - im1  # The derivative of I by t
-    #
-    # orgnlPoints = []
-    # u_v = []
-    #
-    # for i in range(step_size, im1.shape[0], step_size):
-    #     for j in range(step_size, im1.shape[1], step_size):
-    #         try:
-    #             windowIx = Ix[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2: j + 1 + win_size // 2]
-    #             windowIy = Iy[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2: j + 1 + win_size // 2]
-    #             windowIt = It[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2: j + 1 + win_size // 2]
-    #             if windowIx.size < win_size * win_size:
-    #                 break
-    #             A = np.concatenate(
-    #                 (windowIx.reshape((win_size * win_size, 1)), windowIy.reshape((win_size * win_size, 1))), axis=1)
-    #             b = (windowIt.reshape((win_size * win_size, 1)))
-    #             g, _ = LA.eig(np.dot(A.T, A))
-    #             g = np.sort(g)
-    #             print(g)
-    #             if (g[1] >= g[0] > 1 and (g[1] / g[0]) < 100):
-    #                 v = np.dot(np.dot(inv(np.dot(A.T, A)), A.T), b)
-    #                 orgnlPoints.append(np.array([j, i]))
-    #                 u_v.append(v)
-    #                 print(g[0], g[1])
-    #
-    #         except IndexError as e:
-    #             pass
-    # return np.array(orgnlPoints), np.array(u_v)
+
 
 
 def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
@@ -60,6 +58,23 @@ def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     :param levels: Pyramid depth
     :return: Laplacian Pyramid (list of images)
     """
+
+    pyramids = []
+
+    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
+    gauss_ker = cv2.getGaussianKernel(5, sigma)
+    gauss_ker = gauss_ker * gauss_ker.transpose()
+    gauss_ker *= 4
+
+    """i stoped here"""
+    gaussian_pyr = gaussianPyr(img, levels)
+    for i in range(levels - 1):
+        extend_level = gaussExpand(gaussian_pyr[i + 1], gauss_ker)
+        lap_level = gaussian_pyr[i] - extend_level
+        pyramids.append(lap_level.copy())
+    pyramids.append(gaussian_pyr[-1])
+    return pyramids
+
     pass
 
 
@@ -82,6 +97,7 @@ def gaussianPyr(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     pyramidRes = []
     h = (2**levels) * (img.shape[0] // (2**levels))
     w = (2**levels) * (img.shape[1] // (2**levels))
+    img=img[:h, :w]
 
     img = cv2.resize(img, (w, h))  # resize the image
     pyramidRes.append(img)
