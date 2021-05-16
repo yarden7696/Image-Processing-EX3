@@ -59,21 +59,20 @@ def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     :return: Laplacian Pyramid (list of images)
     """
 
-    pyramids = []
+    laplcn_pyrmd = []
 
     sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
     gauss_ker = cv2.getGaussianKernel(5, sigma)
     gauss_ker = gauss_ker * gauss_ker.transpose()
     gauss_ker *= 4
 
-    """i stoped here"""
-    gaussian_pyr = gaussianPyr(img, levels)
+    gauss_pyrmd = gaussianPyr(img, levels)  # creating gaussian pyramid with the num of levels we got
     for i in range(levels - 1):
-        extend_level = gaussExpand(gaussian_pyr[i + 1], gauss_ker)
-        lap_level = gaussian_pyr[i] - extend_level
-        pyramids.append(lap_level.copy())
-    pyramids.append(gaussian_pyr[-1])
-    return pyramids
+        afterExpand = gaussExpand(gauss_pyrmd[i + 1], gauss_ker)  # expand the image in i+1 position from gauss_pyrmd
+        imgLplcan = gauss_pyrmd[i] - afterExpand  # Create the difference image (subtraction between Gx-Expand (Gx + 1))
+        laplcn_pyrmd.append(imgLplcan.copy())
+    laplcn_pyrmd.append(gauss_pyrmd[-1])
+    return laplcn_pyrmd
 
     pass
 
@@ -84,6 +83,23 @@ def laplaceianExpand(lap_pyr: List[np.ndarray]) -> np.ndarray:
     :param lap_pyr: Laplacian Pyramid
     :return: Original image
     """
+
+    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
+    gaussKernel = cv2.getGaussianKernel(5, sigma)
+    gaussKernel = gaussKernel * gaussKernel.transpose()
+    gaussKernel *= 4
+
+    # reverse to the Laplacian pyramid so that the first element will is the smallest image
+    lap_pyr.reverse()
+    lap_img = lap_pyr[0]  # the smallest laplacian image
+
+    for i in range(1, len(lap_pyr)):
+        afterExpand = gaussExpand(lap_img, gaussKernel)  # expand the lap_img
+        lap_img = afterExpand + lap_pyr[i]  # add between the difference image and the expand image
+
+    lap_pyr.reverse()
+    return lap_img
+
     pass
 
 
@@ -94,15 +110,17 @@ def gaussianPyr(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     :param levels: Pyramid depth
     :return: Gaussian pyramid (list of images)
     """
+# To create a Gaussian pyramid in the first step i blur the image with a Gaussian kernel and second i sampled every
+    # second pixel
     pyramidRes = []
     h = (2**levels) * (img.shape[0] // (2**levels))
     w = (2**levels) * (img.shape[1] // (2**levels))
-    img=img[:h, :w]
+    dim = (w, h)
 
-    img = cv2.resize(img, (w, h))  # resize the image
-    pyramidRes.append(img)
-
+    img = cv2.resize(img[:h, :w], dim)  # resize the image
+    pyramidRes.append(img)  # adding the first image
     copyImg = img.copy()
+
     for i in range(1, levels):
         # Blurring the image with a Gaussian kernel
         sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
@@ -132,10 +150,18 @@ def gaussExpand(img: np.ndarray, gs_k: np.ndarray) -> np.ndarray:
     else:  # RGB case
         zero_padding = np.zeros((2 * img.shape[0], 2 * img.shape[1], img.shape[2]), dtype=img.dtype)
 
-    zero_padding[::2, ::2] = img
+    zero_padding[::2, ::2] = img  # Samples every second pixel
     return cv2.filter2D(zero_padding, -1, gs_k, borderType=cv2.BORDER_REPLICATE)
     pass
 
+
+
+
+
+def fix(img, levels) -> np.ndarray:
+    h = pow(2, levels) * (img.shape[0] // pow(2, levels))
+    w = pow(2, levels) * (img.shape[1] // pow(2, levels))
+    return img[:h, :w]
 
 def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int) -> (np.ndarray, np.ndarray):
     """
@@ -146,4 +172,29 @@ def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int
     :param levels: Pyramid depth
     :return: Blended Image
     """
+
+    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
+    gaussKernel = cv2.getGaussianKernel(5, sigma)
+    gaussKernel = gaussKernel * gaussKernel.transpose()
+    gaussKernel *= 4
+
+    mask = fix(mask, levels)
+    img_1 = fix(img_1, levels)
+    img_2 = fix(img_2, levels)
+
+
+    n_blend = img_1 * mask + (1 - mask) * img_2
+
+    Gm = gaussianPyr(mask, levels)  # Build a Gaussian pyramid for mask
+
+    La = laplaceianReduce(img_1, levels)  # Build a Laplacian pyramid for img_1
+    Lb = laplaceianReduce(img_2, levels)  # Build a Laplacian pyramid for img_2
+
+    Lc = La[levels - 1] * Gm[levels - 1] + (1 - Gm[levels - 1]) * Lb[levels - 1]
+
+    for i in range(levels - 2, -1, -1):
+        Lc = gaussExpand(Lc,gaussKernel) + La[i] * Gm[i] + (1 - Gm[i]) * Lb[i]
+
+    return n_blend, Lc
+
     pass
