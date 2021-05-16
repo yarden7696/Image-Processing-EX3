@@ -83,7 +83,7 @@ def blendDemo():
     plt.show()
 
     cv2.imwrite('input/sunset_cat.png', cv2.cvtColor((im_blend * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
-    cv2.imwrite('input/sunset_cat_naive.png', cv2.cvtColor((n_blend * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
+
 
 
 def main():
