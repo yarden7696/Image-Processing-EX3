@@ -7,7 +7,23 @@ import matplotlib.pyplot as plt
 from numpy.linalg import inv
 from numpy import linalg as LA
 
-# לשנות עוד את הפונקציה ולכתוב הערות
+"""--------------------------------------------Ex3-----------------------------------------------------"""
+
+
+def fix(img, levels) -> np.ndarray:
+    h = pow(2, levels) * (img.shape[0] // pow(2, levels))
+    w = pow(2, levels) * (img.shape[1] // pow(2, levels))
+    return img[:h, :w]
+
+
+def get_Gauss_Kernel(krnlSize: int):
+    sigma = 0.3 * ((krnlSize - 1) * 0.5 - 1) + 0.8
+    gaussKernel = cv2.getGaussianKernel(krnlSize, sigma)
+    gaussKernel = gaussKernel * gaussKernel.transpose()
+    gaussKernel *= 4
+    return gaussKernel
+
+
 def opticalFlow(im1: np.ndarray, im2: np.ndarray, step_size=10, win_size=5) -> (np.ndarray, np.ndarray):
     """
     Given two images, returns the Translation from im1 to im2
@@ -17,38 +33,43 @@ def opticalFlow(im1: np.ndarray, im2: np.ndarray, step_size=10, win_size=5) -> (
     :param win_size: The optical flow window size (odd number)
     :return: Original points [[x,y]...], [[dU,dV]...] for each points
     """
-    orgPoints = []
     u_v = []
+    orgPoints = []
 
-    Iy = cv2.Sobel(im1, -1, 0, 1)  # The derivative of I2 in the y-axis
-    Ix = cv2.Sobel(im1, -1, 1, 0)  # The derivative of I2 in the x-axis
-    It = im1 - im2  # The derivative of I by t
+    Gx = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
+    Ix = cv2.filter2D(im2, -1, Gx, borderType=cv2.BORDER_REPLICATE)  # The derivative of I2 in the x-axis
+    Iy = cv2.filter2D(im2, -1, Gx.transpose(), borderType=cv2.BORDER_REPLICATE)  # The derivative of I2 in the y-axis
+    It = im2 - im1  # The derivative of I by t
 
+    l = 0
     for i in range(step_size, im1.shape[0], step_size):
         for j in range(step_size, im1.shape[1], step_size):
-            try:
-                winIx = Ix[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
-                winIy = Iy[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
-                winIt = It[i - win_size // 2:i + 1 + win_size // 2, j - win_size // 2:j + 1 + win_size // 2]
 
-                if winIx.size < (win_size * win_size):
-                    break
-                Amat = np.concatenate(
-                    (winIx.reshape(((win_size * win_size), 1)), winIy.reshape(((win_size * win_size), 1))), axis=1)
-                bMat = (winIt.reshape(((win_size * win_size), 1)))
-                eig, _ = LA.eig(np.dot(Amat.T, Amat))
-                eig = np.sort(eig)
-                if eig[1] >= eig[0] > 1 and (eig[1] / eig[0]) < 100:
-                    d = np.dot(np.dot(inv(np.dot(Amat.T, Amat)), Amat.T), bMat)
-                    orgPoints.append(np.array([j, i]))
-                    u_v.append(d)
+            x = Ix[i - win_size // 2:i + win_size // 2 + 1, j - win_size // 2:j + win_size // 2 + 1].flatten()
+            y = Iy[i - win_size // 2:i + win_size // 2 + 1, j - win_size // 2:j + win_size // 2 + 1].flatten()
+            t = It[i - win_size // 2:i + win_size // 2 + 1, j - win_size // 2:j + win_size // 2 + 1].flatten()
 
-            except IndexError as e:
-                pass
+            b = np.array([[-1 * sum(x[k] * t[k] for k in range(len(x))),
+                           -1 * sum(y[k] * t[k] for k in range(len(y)))]]).reshape(2, 1)
+
+            A = np.array([[sum(x[k] ** 2 for k in range(len(x))), sum(x[k] * y[k] for k in range(len(x)))],
+                          [sum(x[k] * y[k] for k in range(len(x))), sum(y[k] ** 2 for k in range(len(y)))]])
+
+            ev1, ev2 = np.linalg.eigvals(A)
+            if ev2 < ev1:  # sort
+                temp = ev1
+                ev1 = ev2
+                ev2 = temp
+            if ev2 / ev1 < 100 and ev2 >= ev1 > 1:
+                vel = np.dot(np.linalg.pinv(A), b)  # minimize ||Ad-b||^2
+                u = vel[0][0]
+                v = vel[1][0]
+                u_v.append(np.array([u, v]))
+            else:
+                l += 1
+                u_v.append(np.array([0.0, 0.0]))
+            orgPoints.append(np.array([j, i]))
     return np.array(orgPoints), np.array(u_v)
-
-
-
 
 
 def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
@@ -60,13 +81,9 @@ def laplaceianReduce(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     """
 
     laplcn_pyrmd = []
-
-    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
-    gauss_ker = cv2.getGaussianKernel(5, sigma)
-    gauss_ker = gauss_ker * gauss_ker.transpose()
-    gauss_ker *= 4
-
     gauss_pyrmd = gaussianPyr(img, levels)  # creating gaussian pyramid with the num of levels we got
+    gauss_ker = get_Gauss_Kernel(5)
+
     for i in range(levels - 1):
         afterExpand = gaussExpand(gauss_pyrmd[i + 1], gauss_ker)  # expand the image in i+1 position from gauss_pyrmd
         imgLplcan = gauss_pyrmd[i] - afterExpand  # Create the difference image (subtraction between Gx-Expand (Gx + 1))
@@ -84,14 +101,10 @@ def laplaceianExpand(lap_pyr: List[np.ndarray]) -> np.ndarray:
     :return: Original image
     """
 
-    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
-    gaussKernel = cv2.getGaussianKernel(5, sigma)
-    gaussKernel = gaussKernel * gaussKernel.transpose()
-    gaussKernel *= 4
-
     # reverse to the Laplacian pyramid so that the first element will is the smallest image
     lap_pyr.reverse()
     lap_img = lap_pyr[0]  # the smallest laplacian image
+    gaussKernel = get_Gauss_Kernel(5)
 
     for i in range(1, len(lap_pyr)):
         afterExpand = gaussExpand(lap_img, gaussKernel)  # expand the lap_img
@@ -124,9 +137,9 @@ def gaussianPyr(img: np.ndarray, levels: int = 4) -> List[np.ndarray]:
     for i in range(1, levels):
         # Blurring the image with a Gaussian kernel
         sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
-        guassian = cv2.getGaussianKernel(5, sigma)
-        guassian = guassian * guassian.transpose()
-        copyImg = cv2.filter2D(copyImg, -1, guassian, borderType=cv2.BORDER_REPLICATE)
+        gaussian = cv2.getGaussianKernel(5, sigma)
+        gaussian = gaussian * gaussian.transpose()
+        copyImg = cv2.filter2D(copyImg, -1, gaussian, borderType=cv2.BORDER_REPLICATE)
 
         copyImg = copyImg[::2, ::2]  # Samples every second pixel
         pyramidRes.append(copyImg)
@@ -156,12 +169,6 @@ def gaussExpand(img: np.ndarray, gs_k: np.ndarray) -> np.ndarray:
 
 
 
-def fix(img, levels) -> np.ndarray:
-    h = pow(2, levels) * (img.shape[0] // pow(2, levels))
-    w = pow(2, levels) * (img.shape[1] // pow(2, levels))
-    return img[:h, :w]
-
-
 def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int) -> (np.ndarray, np.ndarray):
     """
     Blends two images using PyramidBlend method
@@ -172,16 +179,12 @@ def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int
     :return: Blended Image
     """
 
-    sigma = 0.3 * ((5 - 1) * 0.5 - 1) + 0.8
-    gaussKernel = cv2.getGaussianKernel(5, sigma)
-    gaussKernel = gaussKernel * gaussKernel.transpose()
-    gaussKernel *= 4
-
+    gaussKernel = get_Gauss_Kernel(5)
     mask = fix(mask, levels)
     img_1 = fix(img_1, levels)
     img_2 = fix(img_2, levels)
 
-    n_blend = img_1 * mask + (1 - mask) * img_2  # naive method
+    n_blend = img_1 * mask + (1 - mask) * img_2  # naive blending
 
     Gm = gaussianPyr(mask, levels)  # Build a Gaussian pyramid for mask
     La = laplaceianReduce(img_1, levels)  # Build a Laplacian pyramid for img_1
