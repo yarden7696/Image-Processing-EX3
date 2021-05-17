@@ -156,12 +156,11 @@ def gaussExpand(img: np.ndarray, gs_k: np.ndarray) -> np.ndarray:
 
 
 
-
-
 def fix(img, levels) -> np.ndarray:
     h = pow(2, levels) * (img.shape[0] // pow(2, levels))
     w = pow(2, levels) * (img.shape[1] // pow(2, levels))
     return img[:h, :w]
+
 
 def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int) -> (np.ndarray, np.ndarray):
     """
@@ -182,17 +181,15 @@ def pyrBlend(img_1: np.ndarray, img_2: np.ndarray, mask: np.ndarray, levels: int
     img_1 = fix(img_1, levels)
     img_2 = fix(img_2, levels)
 
-
-    n_blend = img_1 * mask + (1 - mask) * img_2
+    n_blend = img_1 * mask + (1 - mask) * img_2  # naive method
 
     Gm = gaussianPyr(mask, levels)  # Build a Gaussian pyramid for mask
-
     La = laplaceianReduce(img_1, levels)  # Build a Laplacian pyramid for img_1
     Lb = laplaceianReduce(img_2, levels)  # Build a Laplacian pyramid for img_2
 
     Lc = La[levels - 1] * Gm[levels - 1] + (1 - Gm[levels - 1]) * Lb[levels - 1]
-
     for i in range(levels - 2, -1, -1):
+        # Adding between a laplacian image at level i and a laplacian image with expand at level i + 1
         Lc = gaussExpand(Lc,gaussKernel) + La[i] * Gm[i] + (1 - Gm[i]) * Lb[i]
 
     return n_blend, Lc
