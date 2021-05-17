@@ -66,9 +66,9 @@ def pyrLaplacianDemo(img_path):
 
 
 def blendDemo():
-    im1 = cv2.cvtColor(cv2.imread('input/sunset.jpg'), cv2.COLOR_BGR2RGB) / 255
-    im2 = cv2.cvtColor(cv2.imread('input/cat.jpg'), cv2.COLOR_BGR2RGB) / 255
-    mask = cv2.cvtColor(cv2.imread('input/mask_cat.jpg'), cv2.COLOR_BGR2RGB) / 255
+    im1 = cv2.cvtColor(cv2.imread('sunset.jpg'), cv2.COLOR_BGR2RGB) / 255
+    im2 = cv2.cvtColor(cv2.imread('cat.jpg'), cv2.COLOR_BGR2RGB) / 255
+    mask = cv2.cvtColor(cv2.imread('mask_cat.jpg'), cv2.COLOR_BGR2RGB) / 255
 
     n_blend, im_blend = pyrBlend(im1, im2, mask, 4)
 
@@ -82,15 +82,15 @@ def blendDemo():
 
     plt.show()
 
-    cv2.imwrite('input/sunset_cat.png', cv2.cvtColor((im_blend * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
+    cv2.imwrite('sunset_cat.png', cv2.cvtColor((im_blend * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
 
 
 
 def main():
-    img_path = 'input/boxman.jpg'
+    img_path = 'boxman.jpg'
     lkDemo(img_path)
-    pyrGaussianDemo('input/pyr_bit.jpg')
-    pyrLaplacianDemo('input/pyr_bit.jpg')
+    pyrGaussianDemo('pyr_bit.jpg')
+    pyrLaplacianDemo('pyr_bit.jpg')
     blendDemo()
 
 
